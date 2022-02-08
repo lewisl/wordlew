@@ -206,7 +206,7 @@ end
 #
 #####################################################################
 
-if isinteractive()
+if isinteractive() & !isempty(ARGS)
     play(ARGS[1])
     exit()
 end
