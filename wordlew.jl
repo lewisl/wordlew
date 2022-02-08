@@ -2,6 +2,7 @@
 using StatsBase
 using DelimitedFiles
 using InteractiveUtils
+using Printf
 
 include("wordcrypt.jl")
 
@@ -67,11 +68,11 @@ function how_to_play()
     Here's an example of scoring the guess "boffo":
     Your guess:      b o f f o
     Score:           X o X F X
-    There is no 'b'; There is one 'o' in a different place; 
-    There is only one 'f' so this one is wrong; 
-    Because the second 'f' you guessed is in the right place; 
-    There is only one 'o' so we showed the first 'o' as in the secret word
-    and the second one as wrong. The one 'o' could be anywhere 
+    There is no 'b'. There is one 'o' in a different place.
+    There is only one 'f' so the first 'f' is wrong.
+    The second 'f' you guessed is in the right place; 
+    There is only one 'o' so the first 'o' scored as in the secret word
+    and the second 'o' is wrong. The one 'o' could be anywhere 
     except where the preceding correct 'f' is.
 
     """
@@ -83,13 +84,14 @@ function ask_guess()
     not_ok = true
     while not_ok
         print("Enter a 5 letter word to guess: ")
-
         guess = chomp(readline())
-        if length(guess) > 5
-            println("Oops! Your word must be five letters.")
+        lg = length(guess)
+
+        if lg > 5
+            correction_msg("Oops! Your word must be five letters.")
             continue
         elseif notaword(guess, wordbase)
-            println("You need to guess a real word.")
+            correction_msg("You need to guess a real word.")
             continue
         else
             not_ok = false
@@ -97,6 +99,17 @@ function ask_guess()
     end
     guess = lowercase(guess)
     return guess
+end
+
+
+function correction_msg(txt)
+    uplines(1)          
+    cursorto(20)
+    print(txt)
+    clearline(:curs)    
+    sleep(2)
+    cursorto(20)           
+    clearline(:curs)    
 end
 
 
@@ -127,32 +140,31 @@ function show_1_result(wordscored)
 end
 
 
-function score_guess(guess, trueword, n=5)
-    ret = zeros(UInt8, n)
-    wordmap = countmap(trueword)
+function score_guess(gw, tw)
+    n = length(tw)
+    ret = fill(wrong, n)  # zeros(UInt8, n)
+    twarr = collect(tw)
 
-    for i in eachindex(guess)
-        guesschar = guess[i]
-        if guesschar  == trueword[i]
+    # find every guess letter in the right position
+    for i in eachindex(gw)  
+        if twarr[i] == gw[i]
             ret[i] = right
-            if wordmap[guesschar] == 1
-                delete!(wordmap, guesschar)
-            else
-                wordmap[guesschar] -= 1
-            end
-        elseif haskey(wordmap, guesschar)
-            ret[i] = inword
-            if wordmap[guesschar] == 1
-                delete!(wordmap, guesschar)
-            else
-                wordmap[guesschar] -= 1
-            end
-        else
-            ret[i] = wrong
+            twarr[i] = ';' # rule it out
         end
     end
+
+    # find every guess letter in the word
+    for i in eachindex(gw)
+        match = findfirst(gw[i] .== twarr)
+        if !isnothing(match)
+            ret[i] = inword
+            twarr[match] = ';'  # rule it out
+        end
+    end
+
     return ret
 end
+
 
 function show_share(share::Vector{String})
 
@@ -185,19 +197,41 @@ end
 
 wordbase = makewordbase()
 
-function overprint(str)  
-    print("\e[2K") # clear whole line
-    print("\u1b[0F")  #Moves cursor to beginning of the line n (default 1) lines up   
-    print(str)   #prints the new line
+#####################################################################
+# terminal movement based on ANSI terminal codes
+#####################################################################
 
-    #    print("\u1b[0K") 
-    # clears  part of the line.
-    #If n is 0 (or missing), clear from cursor to the end of the line. 
-    #If n is 1, clear from cursor to beginning of the line. 
-    #If n is 2, clear entire line. 
-    #Cursor position does not change. 
+function uplines(n=1)
+    @printf("\e[%dA", n)
+end
 
-    # println() #prints a new line, i really don't like this arcane codes
+function forward(n)
+    @printf("\e[%dC", n)
+end
+
+function back(n)
+    @printf("\e[%dD", n)
+end
+
+function cursorto(n)
+    @printf("\e[%dG", n)
+end
+
+function clearline(pos::Symbol)
+    n = if pos == :curs
+            0
+        elseif pos == :all
+            2
+        elseif pos == :beg
+            1
+        else
+            throw(DomainError("Position must be :curs, :all, or :beg"))
+        end
+    clearline(n)
+end
+
+function clearline(n::Int)
+    @printf("\e[%dK", n)
 end
 
 #####################################################################
