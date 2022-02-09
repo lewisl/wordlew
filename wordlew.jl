@@ -81,13 +81,14 @@ function how_to_play()
 
     Here's an example of scoring the guess "boffo":
     Your guess:      b o f f o
-    Score:           X o X F X
-    There is no 'b'. There is one 'o' in a different place.
-    There is only one 'f' so the first 'f' is wrong.
-    The second 'f' you guessed is in the right place; 
-    There is only one 'o' so the first 'o' scored as in the secret word
-    and the second 'o' is wrong. The one 'o' could be anywhere 
-    except where the preceding correct 'f' is.
+    Result:          X o X F X
+    What does the result mean? by letter number:
+    1. There is no 'b'. 
+    2. There is one 'o' in a different place.
+    3. There is only one 'f' so the first 'f' is wrong.
+    4. The second 'f' you guessed is in the right place. 
+    5. There is only one 'o' so the first 'o' scored as in the secret word
+    and the second 'o' is wrong. 
 
     """
     return helpstring
