@@ -3,6 +3,8 @@ using StatsBase
 using DelimitedFiles
 using InteractiveUtils
 using Printf
+using Dates
+using JLD2
 
 include("wordcrypt.jl")
 
@@ -10,11 +12,23 @@ wrong = 0x00
 right = 0x01
 inword = 0x10
 
+td = today()
+
 function wordlew(wordfile)
-    truewords = readdlm(wordfile)
+    print(intro())
+
+
+    #load players
+    playerdata()
+
+    username()
+
+    #load data
+    #play loop
 end
 
 function play(trueword; n_guesses = 6)
+    @assert length(trueword) == 5 "Word to guess must be 5 letters"
     notdone = true
     turn = 1
     share = Vector{String}()
@@ -79,7 +93,85 @@ function how_to_play()
     return helpstring
 end
 
+function intro()
+    helpstring = """
+    This is a version of the wonderful Wordle game by Josh Wardle.
+    We call it Wordlew.
+    - You can play as many times in a day as you wish until you run out of
+    published words.
+    - You can play today's word(s) or if you missed a few days, you play words
+    from several days ago.
+    """
+    return(helpstring)
+end
 
+function username(pdict)
+    helpstring = """
+    Please create a player name. For now, we only use your player name to 
+    keep track of which word clues you've already played. One day we might
+    keep track of your guess results. But, not yet...
+    """
+    print(helpstring)
+    noname = true
+    tries = 1
+
+    print("Do you have a player name? (y, Y, or yes) "); havename = chomp(readline())
+
+    while noname
+        if occursin("y", havename)  # get the player's name
+            print("Enter your player name: "); pn = lowercase(chomp(readline()))
+            if !haskey(pdict, pn)
+                println("Uh, oh--we didn't find your player name. ")
+                print("Want to try it again? (y, Y, or yes) "); tryagain = lowercase(chomp(readline()))
+                tries += 1
+                if tries > 3
+                    println("Well, it's no big deal.  Just create a new player name...")
+                    break
+                end
+                if occursin("y", tryagain)
+                    continue
+                else
+                    break
+                end
+            else
+                println("\nWelcome ", titlecase(pn), "!")
+                return pn
+            end
+        else
+            noname=false
+        end
+    end
+    
+    dupe =  true
+    while dupe
+        print("Please enter a player name for your word history: "); pn = lowercase(chomp(readline()))
+        if haskey(pdict, pn)
+            println("Uh, oh--someone else already has that name")
+            print("Want to try it again? (y, Y, or yes) "); tryagain = lowercase(chomp(readline()))
+            if occursin("y", tryagain)
+                continue
+            else
+                println("Let's go ahead and play today's game without keeping track...")
+                return nothing
+            end
+        else
+            println("\nWelcome ", titlecase(pn), "!")
+            return pn
+        end
+    end
+
+    return pn
+        
+end
+
+    # get or create player data
+
+
+
+function playerdata()
+    println("Under construction...")
+end
+        
 function ask_guess()
     not_ok = true
     while not_ok
@@ -103,11 +195,14 @@ end
 
 
 function correction_msg(txt)
+    # display the message in place
     uplines(1)          
     cursorto(20)
     print(txt)
     clearline(:curs)    
     sleep(2)
+
+    # clear the message and set the cursor for the input prompt
     cursorto(20)           
     clearline(:curs)    
 end

@@ -38,6 +38,13 @@ function simplecrypt(intxt::String, mappings, mode=:enc)
     String(simplecrypt(collect(intxt), mappings, mode))
 end
 
+function bulkcrypt(wordarray::Vector{String}, mappings, mode=:enc)
+    for i in eachindex(wordarray)
+        wordarray[i] = simplecrypt(wordarray[i], mappings, mode)
+    end
+    return wordarray
+end
+
 
 function prepsimplecrypt(key=Char[])
 
