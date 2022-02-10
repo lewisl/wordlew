@@ -14,17 +14,77 @@ inword = 0x10
 
 td = today()
 
-function wordlew(wordfile)
-    print(intro())
+function wordlew(wordfile, playerfile)
+
+    pdict, cluewords = setup(wordfile, playerfile)
+
+    pn = prompt_playername(pdict)  # or create a new one
+
+    startgame(pn, pdict, cluewords)
+
+end
 
 
-    #load players
-    playerdata()
+function setup(wordfile, playerfile)
+    pdict = load_playerdata(playerfile)  # TODO one day there will be too much to load all the player data ...not yet
+    cluewords = loadwords(wordfile)
+    return pdict, cluewords
+end
 
-    username()
+function startgame(pn, pdict, cluewords)
+    if isnothing(pn)  # unnamed player
+        rowidx = findfirst(cluewords[:, 1] .== today())
+        trueword = simplecrypt(cluewords[rowidx,3], mappings, :dec)
 
-    #load data
-    #play loop
+        print(how_to_play()) 
+
+        play(trueword)
+    else   # we've got a live one
+        @assert haskey(pdict, pn) "Key for person $pn not found"
+        pdata = pdict[pn]
+        if !isa(pdata, Dict) # is it a dict?        
+            print(how_to_play())
+            worddate = today()  # worddate for new player
+        else
+            # haskey "lastgame"
+            if haskey(pdata, "lastgame")
+                worddate = Date(pdata["lastgame"].date)
+            else
+                worddate = today()
+            end
+        end
+        if worddate < today()
+            worddate += Day(1) # if date less than today then add 1
+        end
+        rowidx = findfirst(cluewords[:, 1] .== worddate)
+        if isnothing(rowidx)
+            worddate = cluewords[end, 1]  
+        end
+        playwords = cluewords[cluewords[:, 1] .== worddate, 3]
+
+        # start playing today for 5 words   
+        for trueword in playwords
+            play(simplecrypt(trueword, mappings, :dec))   
+            if trueword != playwords[end]
+                playagain = lowercase(prompt_reply("Play again? "))
+            else
+                playagain = 'n'
+            end
+            if occursin("y", playagain)
+                continue
+            else
+                break
+            end
+            # play again
+                # yes: continue
+            # no: capture lastgame; break;
+            # end of the loop: capture lastgame
+        end
+        # update lastgame in pdata
+        # save playerdata  
+
+
+    end
 end
 
 function play(trueword; n_guesses = 6)
@@ -33,16 +93,20 @@ function play(trueword; n_guesses = 6)
     turn = 1
     share = Vector{String}()
 
-    print(how_to_play())
+    # print(how_to_play())
 
     print("   |.............| ")
+    println()   # go down one line
+    forward(19)
     while notdone
+        # println()
         guess = ask_guess()
         score = score_guess(guess, trueword)
         wordscored, sharable = word_score(guess, score)
         push!(share, String(sharable))
 
         # this is the game display--move to another function
+        uplines(1)
         show_1_result(wordscored)
         turn += 1
         if all(score .== right)
@@ -54,6 +118,9 @@ function play(trueword; n_guesses = 6)
             println("So sorry! You didn't guess the word in $n_guesses tries.")
             println("We can't tell you the word: it's a secret.")
             notdone = false
+        else
+            println()
+            forward(19)
         end
     end
     print("Do you want to share your outcome? (y or Y or yes...) ")
@@ -71,6 +138,9 @@ end
 
 function how_to_play()
     helpstring = """
+    This is a version of the wonderful Wordle game by Josh Wardle.
+    We call it Wordlew.
+    
     You will be asked to enter a five letter word to guess the secret word.
     You will get 6 guesses.
     Each guess will be scored to give you clues. The score will show:
@@ -96,8 +166,6 @@ end
 
 function intro()
     helpstring = """
-    This is a version of the wonderful Wordle game by Josh Wardle.
-    We call it Wordlew.
     - You can play as many times in a day as you wish until you run out of
     published words.
     - You can play today's word(s) or if you missed a few days, you play words
@@ -106,73 +174,93 @@ function intro()
     return(helpstring)
 end
 
-function username(pdict)
-    helpstring = """
-    Please create a player name. For now, we only use your player name to 
-    keep track of which word clues you've already played. One day we might
-    keep track of your guess results. But, not yet...
-    """
-    print(helpstring)
-    noname = true
+function prompt_playername(pdict)
     tries = 1
-
-    print("Do you have a player name? (y, Y, or yes) "); havename = chomp(readline())
-
-    while noname
-        if occursin("y", havename)  # get the player's name
-            print("Enter your player name: "); pn = lowercase(chomp(readline()))
-            if !haskey(pdict, pn)
-                println("Uh, oh--we didn't find your player name. ")
-                print("Want to try it again? (y, Y, or yes) "); tryagain = lowercase(chomp(readline()))
-                tries += 1
-                if tries > 3
-                    println("Well, it's no big deal.  Just create a new player name...")
-                    break
-                end
-                if occursin("y", tryagain)
-                    continue
-                else
-                    break
-                end
-            else
+    while tries < 4
+        pn = lowercase(prompt_reply("Enter your player name: (..or press enter) "))
+        if isempty(pn)
+            pn = create_playername(pdict)
+            return  pn
+            break
+        else
+            if haskey(pdict, pn)  # check for valid player name
                 println("\nWelcome ", titlecase(pn), "!")
                 return pn
-            end
-        else
-            noname=false
-        end
-    end
-    
-    dupe =  true
-    while dupe
-        print("Please enter a player name for your word history: "); pn = lowercase(chomp(readline()))
-        if haskey(pdict, pn)
-            println("Uh, oh--someone else already has that name")
-            print("Want to try it again? (y, Y, or yes) "); tryagain = lowercase(chomp(readline()))
-            if occursin("y", tryagain)
-                continue
+                break
             else
-                println("Let's go ahead and play today's game without keeping track...")
-                return nothing
+                uplines(1)
+                clearline(:all)
+                cursorto(1)
+                print("Uh, oh--we didn't find your player name. ")
+                sleep(2)
+
+                clearline(:all)
+                cursorto(1)
+                tries += 1
             end
-        else
-            println("\nWelcome ", titlecase(pn), "!")
-            return pn
         end
     end
-
+    donew = prompt_reply("Do you want to create a new player name? ")
+    if occursin("y", lowercase(donew))
+        pn = create_playername(pdict)
+    end
     return pn
+end
+  
+    
+function create_playername(pdict)
+    helpstring = """
+    Let's create a player name. We only use your player name to 
+    keep track of which word clues you've already played.
+
+    With a player name:
+    - You can guess 5 words a day 
+    - You can play previous day's words (you skipped a day!?!)
+
+    Or you can skip this and guess one word right now.
+    """
+
+    print(helpstring)
+
+    tries = 1
+    while tries < 4
+        newpn = lowercase(prompt_reply("Enter your new player name: (or hit enter to skip it)> "))
+        if isempty(newpn)
+            println("Ok. Let's go guess one word.")
+            return nothing   # make sure this triggers starting to play
+        else
+            if haskey(pdict, newpn)
+                uplines(1)
+                clearline(:all)
+                cursorto(1)
+                print("Uh, oh--somebody already has that player name. ")
+                sleep(2)
+
+                clearline(:all)
+                cursorto(1)
+                tries += 1
+            else
+                println("\nWelcome to Wordlew. Your player name is ", titlecase(newpn), "!")
+                addnewplayer!(pdict, newpn)
+                return newpn  
+            end
+        end
+    end
+    println("OK. Enough is enough. Let's go guess one word.")
+    return nothing
         
 end
 
-    # get or create player data
 
 
-
-function playerdata()
-    println("Under construction...")
+function load_playerdata(playerfile)
+    pdict = load(playerfile)
 end
         
+function addnewplayer!(pdict,newpn)
+    pdict[newpn] = nothing
+end
+
 function ask_guess()
     not_ok = true
     while not_ok
@@ -209,6 +297,10 @@ function correction_msg(txt)
 end
 
 
+######################################################################
+# game logic
+######################################################################
+
 function word_score(guess, score)
     ret = similar(collect(guess))
     sharable = copy(ret)  # shows accuracy without revealing correct letters
@@ -233,6 +325,35 @@ function show_1_result(wordscored)
     for i in eachindex(wordscored)
         print(wordscored[i], "  ")
     end
+end
+
+# alternative to score_guess that works (is correct)
+    # same performance. different order for inword scores
+function score2(gw, tw)
+    unscored = Set(1:5)
+    unused = Set(1:5)
+    ret = fill(wrong, 5)
+
+    # exact matches
+    for i in 1:5
+        if gw[i] == tw[i]
+            ret[i] = right
+            delete!(unscored, i)
+            delete!(unused, i)
+        end
+    end
+
+    # in the word
+    for gwi in unscored
+        for twi in unused
+            if gw[gwi] == tw[twi]
+                ret[gwi] = inword
+                delete!(unused, twi)
+                break
+            end
+        end
+    end
+    return ret
 end
 
 
@@ -284,7 +405,11 @@ function notaword(guess, wordbase)
     !in(guess, wordbase)
 end
 
+############################################################
+# processing words
+############################################################
 
+# all valid 5 letter words that can be guessed
 function makewordbase(wordtxtfilename="words5base.txt")
     wordbase = readdlm(wordtxtfilename, String)
     sort!(wordbase, dims=1)
@@ -293,11 +418,35 @@ end
 
 wordbase = makewordbase()
 
+# clue words
+function loadwords(wordfile)
+    cluewords = readdlm(wordfile, ',', header=true)
+    cluewords = cluewords[1]
+
+    # set types by column
+        # 1 is date; 2 is integer, 3 is string
+        # actually sets the type of each element in a column, not the column itself
+        cluewords[:, 1] .= Date.(cluewords[:, 1])
+        cluewords[:, 2] .= Int.(cluewords[:, 2])
+        cluewords[:, 3] .= String.(lstrip.(cluewords[:,3]))
+    return cluewords
+end
+
+
+#####################################################################
+# helper functions
+#####################################################################
+
+function prompt_reply(msg)
+    print(msg)
+    chomp(readline())
+end
+
 #####################################################################
 # terminal movement based on ANSI terminal codes
 #####################################################################
 
-function uplines(n=1)
+function uplines(n)
     @printf("\e[%dA", n)
 end
 
@@ -314,14 +463,14 @@ function cursorto(n)
 end
 
 function clearline(pos::Symbol)
-    n = if pos == :curs
+    n = if pos == :curs   # cursor to end of line
             0
         elseif pos == :all
             2
-        elseif pos == :beg
+        elseif pos == :beg  # beginning of line to cursor
             1
         else
-            throw(DomainError("Position must be :curs, :all, or :beg"))
+            throw(DomainError(repr(pos), "Position must be :curs, :all, or :beg"))
         end
     clearline(n)
 end
