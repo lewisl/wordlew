@@ -1,4 +1,4 @@
-# module wordlew
+
 using StatsBase
 using DelimitedFiles
 using InteractiveUtils
@@ -8,11 +8,16 @@ using JLD2
 
 include("wordcrypt.jl")
 
+# not quite constants for scoring letter positions within a word
 wrong = 0x00
 right = 0x01
 inword = 0x10
 
-td = today()
+
+
+#########################################################################
+# game frontend
+#########################################################################
 
 function wordlew(wordfile, playerfile)
 
@@ -20,7 +25,11 @@ function wordlew(wordfile, playerfile)
 
     pn = prompt_playername(pdict)  # or create a new one
 
-    startgame(pn, pdict, cluewords)
+    ret = startgame(pn, pdict, cluewords)
+
+    if !isnothing(ret)
+        save(playerfile, ret)
+    end
 
 end
 
@@ -63,78 +72,30 @@ function startgame(pn, pdict, cluewords)
         playwords = cluewords[cluewords[:, 1] .== worddate, 3]
 
         # start playing today for 5 words   
-        for trueword in playwords
+        lastclue = 0
+        for (i, trueword) in enumerate(playwords)
             play(simplecrypt(trueword, mappings, :dec))   
+            lastclue = i
             if trueword != playwords[end]
                 playagain = lowercase(prompt_reply("Play again? "))
             else
-                playagain = 'n'
+                playagain = "n"
             end
-            if occursin("y", playagain)
+            if occursin('y', playagain)
                 continue
             else
+                # no: capture lastgame;
                 break
             end
-            # play again
-                # yes: continue
-            # no: capture lastgame; break;
-            # end of the loop: capture lastgame
         end
-        # update lastgame in pdata
-        # save playerdata  
-
+        lg = (date=worddate, clue=lastclue)
+        pdata["lastgame"] = lg
+        return pdict
 
     end
 end
 
-function play(trueword; n_guesses = 6)
-    @assert length(trueword) == 5 "Word to guess must be 5 letters"
-    notdone = true
-    turn = 1
-    share = Vector{String}()
 
-    # print(how_to_play())
-
-    print("   |.............| ")
-    println()   # go down one line
-    forward(19)
-    while notdone
-        # println()
-        guess = ask_guess()
-        score = score_guess(guess, trueword)
-        wordscored, sharable = word_score(guess, score)
-        push!(share, String(sharable))
-
-        # this is the game display--move to another function
-        uplines(1)
-        show_1_result(wordscored)
-        turn += 1
-        if all(score .== right)
-            println()
-            println("You're brilliant. You guessed the word!")
-            notdone = false
-        elseif turn > n_guesses
-            println("\n")
-            println("So sorry! You didn't guess the word in $n_guesses tries.")
-            println("We can't tell you the word: it's a secret.")
-            notdone = false
-        else
-            println()
-            forward(19)
-        end
-    end
-    print("Do you want to share your outcome? (y or Y or yes...) ")
-    toclipboard = chomp(readline())
-    if occursin("y", lowercase(toclipboard))
-        println(show_share(share))
-        if Sys.islinux()
-            println("Select the results and copy. Then paste somewhere.")
-        else
-            println("You can paste these results...")
-            clipboard(show_share(share))
-        end
-    end
-end
 
 function how_to_play()
     helpstring = """
@@ -261,26 +222,6 @@ function addnewplayer!(pdict,newpn)
     pdict[newpn] = nothing
 end
 
-function ask_guess()
-    not_ok = true
-    while not_ok
-        print("Enter a 5 letter word to guess: ")
-        guess = chomp(readline())
-        lg = length(guess)
-
-        if lg > 5
-            correction_msg("Oops! Your word must be five letters.")
-            continue
-        elseif notaword(guess, wordbase)
-            correction_msg("You need to guess a real word.")
-            continue
-        else
-            not_ok = false
-        end
-    end
-    guess = lowercase(guess)
-    return guess
-end
 
 
 function correction_msg(txt)
@@ -300,6 +241,81 @@ end
 ######################################################################
 # game logic
 ######################################################################
+
+function play(trueword; n_guesses = 6)
+    @assert length(trueword) == 5 "Word to guess must be 5 letters"
+    notdone = true
+    turn = 1
+    share = Vector{String}()
+
+    # print(how_to_play())
+
+    print("   |.............| ")
+    println()   # go down one line
+    forward(19)
+    while notdone
+        # println()
+        guess = ask_guess()
+        score = score_guess(guess, trueword)
+        wordscored, sharable = word_score(guess, score)
+        push!(share, String(sharable))
+
+        # this is the game display--move to another function
+        uplines(1)
+        show_1_result(wordscored)
+        turn += 1
+        if all(score .== right)
+            println()
+            println("You're brilliant. You guessed the word!")
+            notdone = false
+        elseif turn > n_guesses
+            println("\n")
+            println("So sorry! You didn't guess the word in $n_guesses tries.")
+            println("We can't tell you the word: it's a secret.")
+            notdone = false
+        else
+            println()
+            forward(19)
+        end
+    end
+    print("Do you want to share your outcome? (y or Y or yes...) ")
+    toclipboard = chomp(readline())
+    if occursin("y", lowercase(toclipboard))
+        println(show_share(share))
+        if Sys.islinux()
+            println("Select the results and copy. Then paste somewhere.")
+        else
+            println("You can paste these results...")
+            clipboard(show_share(share))
+        end
+    end
+end
+
+
+
+function ask_guess()
+    not_ok = true
+    while not_ok
+        print("Enter a 5 letter word to guess: ")
+        guess = chomp(readline())
+        lg = length(guess)
+
+        if lg > 5
+            uplines(1)
+            correction_msg("Oops! Your word must be five letters.")
+            continue
+        elseif notaword(guess, wordbase)
+            uplines(1)
+            correction_msg("You need to guess a real word.")
+            continue
+        else
+            not_ok = false
+        end
+    end
+    guess = lowercase(guess)
+    return guess
+end
+
 
 function word_score(guess, score)
     ret = similar(collect(guess))
@@ -450,6 +466,10 @@ function uplines(n)
     @printf("\e[%dA", n)
 end
 
+function downlines(n)
+    @printf("\e[%dB", n)
+end
+
 function forward(n)
     @printf("\e[%dC", n)
 end
@@ -478,6 +498,30 @@ end
 function clearline(n::Int)
     @printf("\e[%dK", n)
 end
+
+#####################################################################
+#  terminal colors, from https://en.wikipedia.org/wiki/ANSI_escape_code#Control_characters
+#####################################################################
+
+
+# foreground colors
+#ESC[38;5;⟨n⟩m
+foregr_white = "\e[38;5;15m"
+
+# background colors
+#ESC[48;5;(n)m
+backgr_gray = "\e[48;5;251m"
+backgr_bryellow = "\e[48;5;227m"
+backgr_brgreen = "\e[48;5;119m"
+
+color_reset = "\e[0m"
+
+####################################################################
+# special characters
+####################################################################
+hollow_arrow = '\u25b7'  # ▷
+solid_arrow = '\u25b6'   # ▶
+
 
 #####################################################################
 # using interactively
