@@ -1,0 +1,3 @@
+#!/bin/bash
+julia -i wordlew.jl "foo"
+clear
