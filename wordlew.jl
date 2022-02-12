@@ -5,6 +5,7 @@ using InteractiveUtils
 using Printf
 using Dates
 using JLD2
+using Random
 
 include("wordcrypt.jl")
 
@@ -13,215 +14,243 @@ wrong = 0x00
 right = 0x01
 inword = 0x10
 
+#########################################################################
+# new game design
+#########################################################################
 
+menus = ["  [R]andom  [C]hoose  [H]ow?  [Q]uit",
+         "  [B]ack  [S]hare  [Q]uit"
+        ]
+
+function gameboard(;test = false)
+    # named strings
+    topborder = repeat(' ', 10) * repeat('_', 30)
+
+    menumsg = "  Enter a menu command by first letter (press enter for R)\n"
+    menuprompt = "  " * solid_arrow
+    gamename = "World of Wordlew"
+
+    panelheaders = (' '^10) * "GUESSES" *  (' '^11) * "SCORING\n"
+
+    paneldivider = ("  \u25b6" * (' '^20) * "| " * '\n' *
+                    (' '^23) * "|" * '\n'  )
+    botborder = repeat('_', 50)  # repeat(' ', 10) * 
+
+    # show it
+    line = 0
+    Base.run(`clear`)
+
+    showgamename(gamename);         line += 1
+    print(menumsg);                 line += 1
+    # print(menus[1]);                line += 1
+    println();                      line += 1
+    println(menuprompt);            line += 1
+    println('\n'^5);                line += 5
+    println(panelheaders);          line += 1
+    for i in 1:6
+        print(paneldivider);        line += 2
+    end                             
+    print(botborder);               line += 1
+
+    uplines(line + 1)  # set cursor to top of game board
+    cursorto(1)        # first character
+
+    if test
+        print("lines = ", line)
+        downlines(line + 2)
+    end
+end
+
+function showgamename(gamename)
+    for i in eachindex(gamename)
+        ch = mod(i,3)
+        if ch == 1
+            print(backgr_gray)
+        elseif ch == 2
+            print(backgr_bryellow)
+        elseif ch == 0
+            print(backgr_brgreen)
+        end
+        print(" ", gamename[i], " ")
+    end
+    println(color_reset)
+end
 
 #########################################################################
 # game frontend
 #########################################################################
 
-function wordlew(wordfile, playerfile)
+function wordlew(wordfile="cluewords.txt")
 
-    pdict, cluewords = setup(wordfile, playerfile)
+    cluewords = loadclues(wordfile)
 
-    pn = prompt_playername(pdict)  # or create a new one
+    gameboard()
 
-    ret = startgame(pn, pdict, cluewords)
-
-    if !isnothing(ret)
-        save(playerfile, ret)
-    end
-
-end
-
-
-function setup(wordfile, playerfile)
-    pdict = load_playerdata(playerfile)  # TODO one day there will be too much to load all the player data ...not yet
-    cluewords = loadwords(wordfile)
-    return pdict, cluewords
-end
-
-function startgame(pn, pdict, cluewords)
-    if isnothing(pn)  # unnamed player
-        rowidx = findfirst(cluewords[:, 1] .== today())
-        trueword = simplecrypt(cluewords[rowidx,3], mappings, :dec)
-
-        print(how_to_play()) 
-
-        play(trueword)
-    else   # we've got a live one
-        @assert haskey(pdict, pn) "Key for person $pn not found"
-        pdata = pdict[pn]
-        if !isa(pdata, Dict) # is it a dict?        
-            print(how_to_play())
-            worddate = today()  # worddate for new player
-        else
-            # haskey "lastgame"
-            if haskey(pdata, "lastgame")
-                worddate = Date(pdata["lastgame"].date)
-            else
-                worddate = today()
-            end
-        end
-        if worddate < today()
-            worddate += Day(1) # if date less than today then add 1
-        end
-        rowidx = findfirst(cluewords[:, 1] .== worddate)
-        if isnothing(rowidx)
-            worddate = cluewords[end, 1]  
-        end
-        playwords = cluewords[cluewords[:, 1] .== worddate, 3]
-
-        # start playing today for 5 words   
-        lastclue = 0
-        for (i, trueword) in enumerate(playwords)
-            play(simplecrypt(trueword, mappings, :dec))   
-            lastclue = i
-            if trueword != playwords[end]
-                playagain = lowercase(prompt_reply("Play again? "))
-            else
-                playagain = "n"
-            end
-            if occursin('y', playagain)
-                continue
-            else
-                # no: capture lastgame;
-                break
-            end
-        end
-        lg = (date=worddate, clue=lastclue)
-        pdata["lastgame"] = lg
-        return pdict
-
-    end
-end
-
-
-
-function how_to_play()
-    helpstring = """
-    This is a version of the wonderful Wordle game by Josh Wardle.
-    We call it Wordlew.
-    
-    You will be asked to enter a five letter word to guess the secret word.
-    You will get 6 guesses.
-    Each guess will be scored to give you clues. The score will show:
-    - an upper case letter if you have the right letter in the right place
-    - a lower case letter if you have a letter that is in the secret word
-    - an X if you have a letter that is not in the secret word (or you guessed
-    the same letter too many times)
-
-    Here's an example of scoring the guess "boffo":
-    Your guess:      b o f f o
-    Result:          X o X F X
-    What does the result mean? by letter number:
-    1. There is no 'b'. 
-    2. There is one 'o' in a different place.
-    3. There is only one 'f' so the first 'f' is wrong.
-    4. The second 'f' you guessed is in the right place. 
-    5. There is only one 'o' so the first 'o' scored as in the secret word
-    and the second 'o' is wrong. 
-
-    """
-    return helpstring
-end
-
-function intro()
-    helpstring = """
-    - You can play as many times in a day as you wish until you run out of
-    published words.
-    - You can play today's word(s) or if you missed a few days, you play words
-    from several days ago.
-    """
-    return(helpstring)
-end
-
-function prompt_playername(pdict)
-    tries = 1
-    while tries < 4
-        pn = lowercase(prompt_reply("Enter your player name: (..or press enter) "))
-        if isempty(pn)
-            pn = create_playername(pdict)
-            return  pn
+    menu = 1
+    while true
+        menu = gamemenu(cluewords, menu)
+        if menu == false
             break
-        else
-            if haskey(pdict, pn)  # check for valid player name
-                println("\nWelcome ", titlecase(pn), "!")
-                return pn
-                break
-            else
-                uplines(1)
-                clearline(:all)
-                cursorto(1)
-                print("Uh, oh--we didn't find your player name. ")
-                sleep(2)
-
-                clearline(:all)
-                cursorto(1)
-                tries += 1
-            end
         end
     end
-    donew = prompt_reply("Do you want to create a new player name? ")
-    if occursin("y", lowercase(donew))
-        pn = create_playername(pdict)
-    end
-    return pn
+
 end
-  
-    
-function create_playername(pdict)
-    helpstring = """
-    Let's create a player name. We only use your player name to 
-    keep track of which word clues you've already played.
 
-    With a player name:
-    - You can guess 5 words a day 
-    - You can play previous day's words (you skipped a day!?!)
 
-    Or you can skip this and guess one word right now.
-    """
-
-    print(helpstring)
-
-    tries = 1
-    while tries < 4
-        newpn = lowercase(prompt_reply("Enter your new player name: (or hit enter to skip it)> "))
-        if isempty(newpn)
-            println("Ok. Let's go guess one word.")
-            return nothing   # make sure this triggers starting to play
+function gamemenu(cluewords, menu=1)
+    goto(3,1)
+    clearline(:curs)
+    print(menus[menu])
+    goto_origin(4)
+    still = true
+    while still
+        goto(4,4)
+        clearline(:curs)
+        sleep(2)
+        menuchoice = lowercase.(prompt_reply(""))
+        if isempty(menuchoice)
+            # print("got here")
+            menuchoice = 'r'
         else
-            if haskey(pdict, newpn)
-                uplines(1)
-                clearline(:all)
-                cursorto(1)
-                print("Uh, oh--somebody already has that player name. ")
-                sleep(2)
-
-                clearline(:all)
-                cursorto(1)
-                tries += 1
-            else
-                println("\nWelcome to Wordlew. Your player name is ", titlecase(newpn), "!")
-                addnewplayer!(pdict, newpn)
-                return newpn  
-            end
+            menuchoice = menuchoice[1]
+            # print("got here, choice = ", menuchoice, " ", typeof(menuchoice))
+        end
+        goto_origin(5); sleep(2)
+        if menuchoice == 'r'
+            # goto_origin(5)
+            return(dorandom(cluewords))
+        elseif menuchoice == 'c'
+            # goto_origin(5)
+            return(dochoose(cluewords))
+        elseif menuchoice == 'h'
+            # goto_origin(5)
+            return(dohow())
+        elseif menuchoice == 'b'
+            menu = 1
+            clearboard()
+            return(menu)
+        elseif menuchoice == 'q'
+            # goto_origin(5)
+            doquit()
+        elseif menuchoice == 'j'  # secret way to quit the game and stay in Julia
+            return(dostop())
+        else
+            sleep(2)
+            domsg("Choose again!")
+            continue
         end
     end
-    println("OK. Enough is enough. Let's go guess one word.")
-    return nothing
-        
+end
+
+############################
+# menu commands action
+############################
+
+function dorandom(cluewords)
+    #=
+        get a word
+
+        display the word number
+        play with that word
+    =#
+    clue = simplecrypt(cluewords[rand(1:length(cluewords))], mappings, :dec)
+    domsg(" Your word is $clue")
+    play(clue)
+    menu=2
+    return(menu)
 end
 
 
+function dochoose(cluewords)
+    n = length(cluewords)
 
-function load_playerdata(playerfile)
-    pdict = load(playerfile)
-end
-        
-function addnewplayer!(pdict,newpn)
-    pdict[newpn] = nothing
+    goto(6,3)
+
+    pick = parse(Int, prompt_reply("Pick a number between 1 and $n> ")); 
+    clue = simplecrypt(cluewords[pick], mappings, :dec)
+
+    goto_origin(7)
+
+    play(clue)
+    menu = 2
+    return(menu)
 end
 
+
+function domsg(msg, wait=2; fromorigin=true)
+    nlines = count('\n', msg) + 1
+    @assert nlines < 6 "message is too many lines"
+    if fromorigin
+        goto(5,1)
+    end
+    for (i,l) in enumerate(split(msg, '\n'))
+        print("  ", l)
+        if i <= nlines - 1
+            print("\n")
+        end
+    end
+
+    # clear message
+    if wait == 0
+        print( "  <enter> to continue"); chomp(readline())
+        nlines += 1
+    else
+        sleep(wait)
+    end
+    for i in 1:nlines
+        clearline(:all)
+        uplines(1)
+    end
+    goto_origin(5 + nlines + 1)
+    sleep(2) 
+end
+
+function doquit()
+    domsg("\nBye, bye!")
+    exit()
+end
+
+function dostop()
+    domsg("\nBye, bye!")
+    Base.run(`clear`)
+    false
+end
+
+function dohow()
+    helpstring = (
+"Guess a 5 letter word, for example: forum" * '\n' *
+"Scoring shows: " * backgr_brgreen * 'f' * backgr_bryellow * 'o' * backgr_gray * "rum" * color_reset * '\n' *
+"Which means: f is in the right place, o is in the word, "  * '\n' *
+"and r,u, and m are not in the word." 
+)
+    domsg(helpstring, 0)
+    menu=1
+    return menu
+end
+
+function doshare()
+    println(show_share(share))
+    if Sys.islinux()
+        println("Select the results and copy. Then paste somewhere.")
+    else
+        println("You can paste these results...")
+        clipboard(show_share(share))
+    end
+end
+
+function clearboard(n_guesses = 6)
+    currline = 11
+    goto(currline,3)
+    for i in 1:n_guesses
+        downlines(2)
+        cursorto(2)
+        currline += 2
+        clearline(:all)
+        layout = (" \u25b6" * (' '^20) * "| " )
+        print(layout)
+    end
+    goto_origin(currline)
+end
 
 
 function correction_msg(txt)
@@ -249,64 +278,64 @@ function play(trueword; n_guesses = 6)
     share = Vector{String}()
 
     # print(how_to_play())
-
-    print("   |.............| ")
-    println()   # go down one line
-    forward(19)
+    goto(11,5)
+    currline = 11
     while notdone
-        # println()
+        downlines(2)
+        cursorto(5)
+        currline += 2
         guess = ask_guess()
         score = score_guess(guess, trueword)
         wordscored, sharable = word_score(guess, score)
         push!(share, String(sharable))
 
         # this is the game display--move to another function
-        uplines(1)
         show_1_result(wordscored)
         turn += 1
         if all(score .== right)
-            println()
-            println("You're brilliant. You guessed the word!")
+            goto_origin(currline)
+            domsg("\nYou're brilliant. You guessed the word!")
             notdone = false
         elseif turn > n_guesses
-            println("\n")
-            println("So sorry! You didn't guess the word in $n_guesses tries.")
-            println("We can't tell you the word: it's a secret.")
+            goto_origin(currline)
+            domsg("\nYou didn't guess the word in $n_guesses tries.")
             notdone = false
-        else
-            println()
-            forward(19)
         end
     end
-    print("Do you want to share your outcome? (y or Y or yes...) ")
-    toclipboard = chomp(readline())
-    if occursin("y", lowercase(toclipboard))
-        println(show_share(share))
-        if Sys.islinux()
-            println("Select the results and copy. Then paste somewhere.")
-        else
-            println("You can paste these results...")
-            clipboard(show_share(share))
-        end
-    end
+
 end
 
 
 
 function ask_guess()
+    layout = ("  \u25b6" * (' '^20) * "| " * '\n' *
+                    (' '^23) * "|")
     not_ok = true
     while not_ok
-        print("Enter a 5 letter word to guess: ")
         guess = chomp(readline())
         lg = length(guess)
 
         if lg > 5
             uplines(1)
-            correction_msg("Oops! Your word must be five letters.")
+            cursorto(27)
+            print("Must be 5 letters")
+            sleep(2)
+            cursorto(1)
+            clearline(:all)
+            print(layout)
+            uplines(1)
+            cursorto(5)
             continue
         elseif notaword(guess, wordbase)
             uplines(1)
-            correction_msg("You need to guess a real word.")
+            cursorto(27)
+            print("Guess a real word.")
+            sleep(2)
+            cursorto(1)
+            clearline(:all)
+            print(layout)
+            uplines(1)
+            cursorto(5)
             continue
         else
             not_ok = false
@@ -337,7 +366,8 @@ end
 
 
 function show_1_result(wordscored)
-    print("    ")
+    uplines(1)
+    cursorto(27)
     for i in eachindex(wordscored)
         print(wordscored[i], "  ")
     end
@@ -425,6 +455,10 @@ end
 # processing words
 ############################################################
 
+function loadclues(cluefile)
+    clues = readlines(cluefile)
+end
+
 # all valid 5 letter words that can be guessed
 function makewordbase(wordtxtfilename="words5base.txt")
     wordbase = readdlm(wordtxtfilename, String)
@@ -434,19 +468,7 @@ end
 
 wordbase = makewordbase()
 
-# clue words
-function loadwords(wordfile)
-    cluewords = readdlm(wordfile, ',', header=true)
-    cluewords = cluewords[1]
 
-    # set types by column
-        # 1 is date; 2 is integer, 3 is string
-        # actually sets the type of each element in a column, not the column itself
-        cluewords[:, 1] .= Date.(cluewords[:, 1])
-        cluewords[:, 2] .= Int.(cluewords[:, 2])
-        cluewords[:, 3] .= String.(lstrip.(cluewords[:,3]))
-    return cluewords
-end
 
 
 #####################################################################
@@ -478,8 +500,19 @@ function back(n)
     @printf("\e[%dD", n)
 end
 
-function cursorto(n)
+function cursorto(n)  # within current line
     @printf("\e[%dG", n)
+end
+
+function goto(line, pos)  # line and position
+    # assumes always starting at origin [1,1]
+    downlines(line - 1)
+    cursorto(pos)
+end
+
+function goto_origin(fromline)
+    uplines(fromline - 1)
+    cursorto(1)
 end
 
 function clearline(pos::Symbol)
@@ -530,6 +563,6 @@ solid_arrow = '\u25b6'   # ▶
 #####################################################################
 
 if isinteractive() & !isempty(ARGS)
-    play(ARGS[1])
+    wordlew()
     exit()
 end

@@ -1,4 +1,12 @@
 
+
+function createcluefile(wordbasefile, outfilename)
+    rawwords = readlines(wordbasefile)
+    cryptwords = bulkcrypt(rawwords,mappings,:enc)
+    writedlm(outfilename, cryptwords)
+end
+
+
 """
     simplecrypt(intxt::Vector{Char}, mappings, mode=:enc) 
     simplecrypt(intxt::String, mappings, mode=:enc)
