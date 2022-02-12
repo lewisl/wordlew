@@ -9,10 +9,10 @@ using Random
 
 include("wordcrypt.jl")
 
-# not quite constants for scoring letter positions within a word
-wrong = 0x00
-right = 0x01
-inword = 0x10
+Base.@kwdef struct results
+    guesses::Vector{String} = fill("", 6)
+    scores::Vector{Vector{Symbol}} = [[:none for i in 1:5] for i in 1:6]
+end
 
 #########################################################################
 # new game design
@@ -86,18 +86,28 @@ function wordlew(wordfile="cluewords.txt")
 
     gameboard()
 
+    game = results()
+
     menu = 1
     while true
-        menu = gamemenu(cluewords, menu)
+        menu = gamemenu!(game, cluewords, menu)
         if menu == false
             break
         end
     end
 
+    for i in eachindex(game.guesses)
+        println(game.guesses[i])
+    end
+
+    for i in eachindex(game.scores)
+        println(game.scores[i])
+    end
+
 end
 
 
-function gamemenu(cluewords, menu=1)
+function gamemenu!(game, cluewords, menu=1)
     goto(3,1)
     clearline(:curs)
     print(menus[menu])
@@ -106,36 +116,30 @@ function gamemenu(cluewords, menu=1)
     while still
         goto(4,4)
         clearline(:curs)
-        sleep(2)
+        # sleep(2)
         menuchoice = lowercase.(prompt_reply(""))
         if isempty(menuchoice)
-            # print("got here")
             menuchoice = 'r'
         else
-            menuchoice = menuchoice[1]
-            # print("got here, choice = ", menuchoice, " ", typeof(menuchoice))
+            menuchoice = menuchoice[1]   # incase someone accidentally typed more than 1 character
         end
-        goto_origin(5); sleep(2)
-        if menuchoice == 'r'
-            # goto_origin(5)
-            return(dorandom(cluewords))
-        elseif menuchoice == 'c'
-            # goto_origin(5)
-            return(dochoose(cluewords))
-        elseif menuchoice == 'h'
-            # goto_origin(5)
+        goto_origin(5); # sleep(2)
+        if menuchoice == 'r'      # random
+            return(dorandom!(game, cluewords))
+        elseif menuchoice == 'c'   # choose
+            return(dochoose!(game, cluewords))
+        elseif menuchoice == 'h'  # how?
             return(dohow())
-        elseif menuchoice == 'b'
-            menu = 1
-            clearboard()
-            return(menu)
-        elseif menuchoice == 'q'
-            # goto_origin(5)
+        elseif menuchoice == 'b'  # back
+            return(clearboard())
+        elseif menuchoice == 's'  # capture outcome to share
+            return(doshare())
+        elseif menuchoice == 'q'   # quit out of Julia back to shell
             doquit()
         elseif menuchoice == 'j'  # secret way to quit the game and stay in Julia
             return(dostop())
         else
-            sleep(2)
+            # sleep(2)
             domsg("Choose again!")
             continue
         end
@@ -146,7 +150,7 @@ end
 # menu commands action
 ############################
 
-function dorandom(cluewords)
+function dorandom!(game, cluewords)
     #=
         get a word
 
@@ -155,13 +159,13 @@ function dorandom(cluewords)
     =#
     clue = simplecrypt(cluewords[rand(1:length(cluewords))], mappings, :dec)
     domsg(" Your word is $clue")
-    play(clue)
+    play!(game, clue)
     menu=2
     return(menu)
 end
 
 
-function dochoose(cluewords)
+function dochoose!(game, cluewords)
     n = length(cluewords)
 
     goto(6,3)
@@ -171,7 +175,7 @@ function dochoose(cluewords)
 
     goto_origin(7)
 
-    play(clue)
+    play!(game, clue)
     menu = 2
     return(menu)
 end
@@ -202,7 +206,7 @@ function domsg(msg, wait=2; fromorigin=true)
         uplines(1)
     end
     goto_origin(5 + nlines + 1)
-    sleep(2) 
+    # sleep(2) 
 end
 
 function doquit()
@@ -240,7 +244,7 @@ end
 
 function clearboard(n_guesses = 6)
     currline = 11
-    goto(currline,3)
+    goto(currline,2)
     for i in 1:n_guesses
         downlines(2)
         cursorto(2)
@@ -250,28 +254,17 @@ function clearboard(n_guesses = 6)
         print(layout)
     end
     goto_origin(currline)
+    menu = 1
+    return menu
 end
 
-
-function correction_msg(txt)
-    # display the message in place
-    uplines(1)          
-    cursorto(20)
-    print(txt)
-    clearline(:curs)    
-    sleep(2)
-
-    # clear the message and set the cursor for the input prompt
-    cursorto(20)           
-    clearline(:curs)    
-end
 
 
 ######################################################################
 # game logic
 ######################################################################
 
-function play(trueword; n_guesses = 6)
+function play!(game, trueword; n_guesses = 6)
     @assert length(trueword) == 5 "Word to guess must be 5 letters"
     notdone = true
     turn = 1
@@ -287,12 +280,16 @@ function play(trueword; n_guesses = 6)
         guess = ask_guess()
         score = score_guess(guess, trueword)
         wordscored, sharable = word_score(guess, score)
-        push!(share, String(sharable))
+        game.guesses[turn] = guess
+        game.scores[turn] .= score
+
+        # wordscored, sharable = word_score(guess, score)
+        # push!(share, String(sharable))
 
         # this is the game display--move to another function
         show_1_result(wordscored)
         turn += 1
-        if all(score .== right)
+        if all(score .== :right)
             goto_origin(currline)
             domsg("\nYou're brilliant. You guessed the word!")
             notdone = false
@@ -350,10 +347,10 @@ function word_score(guess, score)
     ret = similar(collect(guess))
     sharable = copy(ret)  # shows accuracy without revealing correct letters
     for i in eachindex(score)
-        if score[i] == wrong
+        if score[i] == :wrong
             ret[i] = 'X'
             sharable[i] = '\u274c'
-        elseif score[i] == inword
+        elseif score[i] == :inword
             ret[i] = lowercase(guess[i])
             sharable[i] = '\u2714'
         else
@@ -383,7 +380,7 @@ function score2(gw, tw)
     # exact matches
     for i in 1:5
         if gw[i] == tw[i]
-            ret[i] = right
+            ret[i] = :inword
             delete!(unscored, i)
             delete!(unused, i)
         end
@@ -393,7 +390,7 @@ function score2(gw, tw)
     for gwi in unscored
         for twi in unused
             if gw[gwi] == tw[twi]
-                ret[gwi] = inword
+                ret[gwi] = :inword
                 delete!(unused, twi)
                 break
             end
@@ -405,13 +402,13 @@ end
 
 function score_guess(gw, tw)
     n = length(tw)
-    ret = fill(wrong, n)  # zeros(UInt8, n)
+    ret = fill(:wrong, n)  # zeros(UInt8, n)
     twarr = collect(tw)
 
-    # find every guess letter in the right position
+    # find every guess letter in the :inword position
     for i in eachindex(gw)  
         if twarr[i] == gw[i]
-            ret[i] = right
+            ret[i] = :right
             twarr[i] = ';' # rule it out
         end
     end
@@ -420,7 +417,7 @@ function score_guess(gw, tw)
     for i in eachindex(gw)
         match = findfirst(gw[i] .== twarr)
         if !isnothing(match)
-            ret[i] = inword
+            ret[i] = :inword
             twarr[match] = ';'  # rule it out
         end
     end
