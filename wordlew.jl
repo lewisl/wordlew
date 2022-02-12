@@ -1,10 +1,8 @@
 
-using StatsBase
 using DelimitedFiles
 using InteractiveUtils
 using Printf
 using Dates
-using JLD2
 using Random
 
 include("wordcrypt.jl")
@@ -26,7 +24,7 @@ function gameboard(;test = false)
     # named strings
     topborder = repeat(' ', 10) * repeat('_', 30)
 
-    menumsg = "  Enter a menu command by first letter (press enter for R)\n"
+    menumsg = "  Enter a menu command by first letter\n"
     menuprompt = "  " * solid_arrow
     gamename = "World of Wordlew"
 
@@ -96,13 +94,7 @@ function wordlew(wordfile="cluewords.txt")
         end
     end
 
-    for i in eachindex(game.guesses)
-        println(game.guesses[i])
-    end
 
-    for i in eachindex(game.scores)
-        println(game.scores[i])
-    end
 
 end
 
@@ -133,7 +125,7 @@ function gamemenu!(game, cluewords, menu=1)
         elseif menuchoice == 'b'  # back
             return(clearboard())
         elseif menuchoice == 's'  # capture outcome to share
-            return(doshare())
+            return(doshare(game))
         elseif menuchoice == 'q'   # quit out of Julia back to shell
             doquit()
         elseif menuchoice == 'j'  # secret way to quit the game and stay in Julia
@@ -158,7 +150,7 @@ function dorandom!(game, cluewords)
         play with that word
     =#
     clue = simplecrypt(cluewords[rand(1:length(cluewords))], mappings, :dec)
-    domsg(" Your word is $clue")
+    # domsg(" Your word is $clue")
     play!(game, clue)
     menu=2
     return(menu)
@@ -232,14 +224,14 @@ function dohow()
     return menu
 end
 
-function doshare()
-    println(show_share(share))
-    if Sys.islinux()
-        println("Select the results and copy. Then paste somewhere.")
-    else
-        println("You can paste these results...")
-        clipboard(show_share(share))
-    end
+function doshare(game)
+    show_share(game)
+    domsg("On a Mac, press shift-cmd-4 and select\n" *
+          "the result squares. Then you can paste them\n" *
+          "into a message.",
+           0)
+    menu=2
+    return menu
 end
 
 function clearboard(n_guesses = 6)
@@ -279,15 +271,11 @@ function play!(game, trueword; n_guesses = 6)
         currline += 2
         guess = ask_guess()
         score = score_guess(guess, trueword)
-        wordscored, sharable = word_score(guess, score)
+        renderscored = render_result(guess, score, :score)
         game.guesses[turn] = guess
         game.scores[turn] .= score
 
-        # wordscored, sharable = word_score(guess, score)
-        # push!(share, String(sharable))
-
-        # this is the game display--move to another function
-        show_1_result(wordscored)
+        show_1_result(renderscored)
         turn += 1
         if all(score .== :right)
             goto_origin(currline)
@@ -302,11 +290,30 @@ function play!(game, trueword; n_guesses = 6)
 
 end
 
+function show_share(game)
+    guesses = game.guesses
+    scores = game.scores
+    currline = 11
+    goto(currline,2)
+    for i in eachindex(guesses)
+        guess = guesses[i]
+        score = scores[i]
+        if score[1] == :none
+            break
+        end
+        rendershare = render_result(guess, score, :share)
+
+        downlines(2)
+        currline += 2
+        cursorto(27)
+        print(rendershare)
+    end
+    goto_origin(currline)
+end
 
 
 function ask_guess()
-    layout = ("  \u25b6" * (' '^20) * "| " * '\n' *
-                    (' '^23) * "|")
+    layout = ("  \u25b6" * (' '^20) * "| " * '\n' * (' '^23) * "|")
     not_ok = true
     while not_ok
         guess = chomp(readline())
@@ -343,31 +350,47 @@ function ask_guess()
 end
 
 
-function word_score(guess, score)
-    ret = similar(collect(guess))
-    sharable = copy(ret)  # shows accuracy without revealing correct letters
-    for i in eachindex(score)
-        if score[i] == :wrong
-            ret[i] = 'X'
-            sharable[i] = '\u274c'
-        elseif score[i] == :inword
-            ret[i] = lowercase(guess[i])
-            sharable[i] = '\u2714'
-        else
-            ret[i] = uppercase(guess[i])
-            sharable[i] = '\u2705'
+function render_result(guess, score, mode=:score)   # visual rendering for terminal output
+    io = IOBuffer()
+    if mode == :score
+        for i in eachindex(score)
+            if score[i] == :wrong
+                print(io, wrong(guess[i]), " ")
+            elseif score[i] == :inword
+                print(io, inword(guess[i]), " ")
+            elseif score[i] == :right
+                print(io, right(guess[i]), " ")
+            else
+                throw(DomainError("invalid letter scoring: $(score[i])"))
+            end
         end
+    elseif mode == :share   # render results without showing actual letters guessed
+        for i in eachindex(score)
+            if score[i] == :wrong
+                print(io, wrong("  "), " ")        #  rendershare[i] = '\u274c'
+            elseif score[i] == :inword
+                print(io, inword("  "), " ")     # '\u2714'
+            elseif score[i] == :right
+                print(io, right("  "), " ")  #  rendershare[i] = '\u2705'
+            else
+                throw(DomainError("invalid letter scoring: $(score[i])"))
+            end
+        end
+ 
+    else
+        throw(DomainError("mode must be :share or :score, got: $mode"))
     end
-    return ret, sharable
+    return String(take!(io))
 end
 
 
-function show_1_result(wordscored)
+function show_1_result(renderscored)
     uplines(1)
     cursorto(27)
-    for i in eachindex(wordscored)
-        print(wordscored[i], "  ")
-    end
+    print(renderscored)
+    # for i in eachindex(renderscored)
+    #     print(renderscored[i], "  ")
+    # end
 end
 
 # alternative to score_guess that works (is correct)
@@ -375,12 +398,12 @@ end
 function score2(gw, tw)
     unscored = Set(1:5)
     unused = Set(1:5)
-    ret = fill(wrong, 5)
+    ret = fill(:wrong, 5)
 
     # exact matches
     for i in 1:5
         if gw[i] == tw[i]
-            ret[i] = :inword
+            ret[i] = :right
             delete!(unscored, i)
             delete!(unused, i)
         end
@@ -551,6 +574,24 @@ color_reset = "\e[0m"
 ####################################################################
 hollow_arrow = '\u25b7'  # ▷
 solid_arrow = '\u25b6'   # ▶
+
+#####################################################################
+# functional formatting
+#####################################################################
+
+right(c) = backgr_brgreen * c * color_reset
+inword(c) = backgr_bryellow * c * color_reset
+wrong(c) = backgr_gray * c * color_reset
+
+# c_score(c, scr_c) = if scr_c == :right
+#                         right(c)
+#                     elseif scr_c == :inword
+#                         inword(c)
+#                     elseif scr_c == :wrong
+#                         wrong(c)
+#                     else
+#                         c
+#                     end
 
 
 #####################################################################
