@@ -290,7 +290,7 @@ function play!(game, trueword; n_guesses = 6)
 
 end
 
-function show_share(game)
+function show_share(game::results)
     guesses = game.guesses
     scores = game.scores
     currline = 11
@@ -393,35 +393,6 @@ function show_1_result(renderscored)
     # end
 end
 
-# alternative to score_guess that works (is correct)
-    # same performance. different order for inword scores
-function score2(gw, tw)
-    unscored = Set(1:5)
-    unused = Set(1:5)
-    ret = fill(:wrong, 5)
-
-    # exact matches
-    for i in 1:5
-        if gw[i] == tw[i]
-            ret[i] = :right
-            delete!(unscored, i)
-            delete!(unused, i)
-        end
-    end
-
-    # in the word
-    for gwi in unscored
-        for twi in unused
-            if gw[gwi] == tw[twi]
-                ret[gwi] = :inword
-                delete!(unused, twi)
-                break
-            end
-        end
-    end
-    return ret
-end
-
 
 function score_guess(gw, tw)
     n = length(tw)
@@ -449,27 +420,10 @@ function score_guess(gw, tw)
 end
 
 
-function show_share(share::Vector{String})
-
-    io = IOBuffer()  # collect output pieces
-
-    for str in share
-        for c in str
-            if c == '\u2714'
-                print(io, "|  ", c, " ")
-            else
-                print(io, "| ",c, " ")
-            end
-        end
-        print(io, "| \n") # new line
-    end
-    return String(take!(io))
-end
-
-
 function notaword(guess, wordbase)
     !in(guess, wordbase)
 end
+
 
 ############################################################
 # processing words
@@ -487,8 +441,6 @@ function makewordbase(wordtxtfilename="words5base.txt")
 end
 
 wordbase = makewordbase()
-
-
 
 
 #####################################################################
@@ -552,10 +504,10 @@ function clearline(n::Int)
     @printf("\e[%dK", n)
 end
 
+
 #####################################################################
 #  terminal colors, from https://en.wikipedia.org/wiki/ANSI_escape_code#Control_characters
 #####################################################################
-
 
 # foreground colors
 #ESC[38;5;⟨n⟩m

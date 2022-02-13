@@ -1,3 +1,5 @@
 #!/bin/bash
+cd wordlewdir
 julia -i wordlew.jl "foo"
+cd ~/workspace
 clear
