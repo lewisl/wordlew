@@ -562,11 +562,12 @@ wrong(c) = backgr_gray * c * color_reset
 if isinteractive() & !isempty(ARGS)
     usefile = false
     if isfile(ARGS[1])
-        for ln in eachline(ARGS1[1])
+        for ln in eachline(ARGS[1])
             if length(ln) == 5
-                wordlew(ARGS[1])
+                break
             end
         end
+        wordlew(ARGS[1])
     else
         wordlew()
     end

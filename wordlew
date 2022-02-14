@@ -1,5 +1,5 @@
 #!/bin/bash
 cd wordlewdir
-julia -i wordlew.jl "foo"
+julia -i wordlew.jl $1 "foo"
 cd ~/workspace
 clear
