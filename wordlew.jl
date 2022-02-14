@@ -7,9 +7,11 @@ using Random
 
 include("wordcrypt.jl")
 
-Base.@kwdef struct results
+Base.@kwdef mutable struct Results
     guesses::Vector{String} = fill("", 6)
     scores::Vector{Vector{Symbol}} = [[:none for i in 1:5] for i in 1:6]
+    cluesource::String=""
+    cluenum::Int=0
 end
 
 #########################################################################
@@ -84,7 +86,8 @@ function wordlew(wordfile="cluewords.txt")
 
     gameboard()
 
-    game = results()
+    game = Results() # struct to hold guesses and scores
+    game.cluesource = splitext(basename(wordfile))[1]
 
     menu = 1
     while true
@@ -93,8 +96,6 @@ function wordlew(wordfile="cluewords.txt")
             break
         end
     end
-
-
 
 end
 
@@ -143,14 +144,10 @@ end
 ############################
 
 function dorandom!(game, cluewords)
-    #=
-        get a word
+    cluenum = rand(1:length(cluewords))
+    clue = simplecrypt(cluewords[cluenum], mappings, :dec)
+    game.cluenum = cluenum
 
-        display the word number
-        play with that word
-    =#
-    clue = simplecrypt(cluewords[rand(1:length(cluewords))], mappings, :dec)
-    # domsg(" Your word is $clue")
     play!(game, clue)
     menu=2
     return(menu)
@@ -164,6 +161,7 @@ function dochoose!(game, cluewords)
 
     pick = parse(Int, prompt_reply("Pick a number between 1 and $n> ")); 
     clue = simplecrypt(cluewords[pick], mappings, :dec)
+    game.cluenum = pick
 
     goto_origin(7)
 
@@ -214,7 +212,7 @@ end
 
 function dohow()
     helpstring = (
-"Guess a 5 letter word, for example: forum" * '\n' *
+"\nGuess a 5 letter word, for example: forum" * '\n' *
 "Scoring shows: " * backgr_brgreen * 'f' * backgr_bryellow * 'o' * backgr_gray * "rum" * color_reset * '\n' *
 "Which means: f is in the right place, o is in the word, "  * '\n' *
 "and r,u, and m are not in the word." 
@@ -226,7 +224,7 @@ end
 
 function doshare(game)
     show_share(game)
-    domsg("On a Mac, press shift-cmd-4 and select\n" *
+    domsg("\nOn a Mac, press shift-cmd-4 and select\n" *
           "the result squares. Then you can paste them\n" *
           "into a message.",
            0)
@@ -236,7 +234,8 @@ end
 
 function clearboard(n_guesses = 6)
     currline = 11
-    goto(currline,2)
+    goto(currline,29)
+    print("SCORING"); clearline(:curs)
     for i in 1:n_guesses
         downlines(2)
         cursorto(2)
@@ -290,9 +289,17 @@ function play!(game, trueword; n_guesses = 6)
 
 end
 
-function show_share(game::results)
+function show_share(game::Results)
     guesses = game.guesses
     scores = game.scores
+
+    # show game name
+    currline = 11
+    goto(currline, 29)
+    print(game.cluesource, " ", game.cluenum)
+    goto_origin(currline)
+
+    # show results to share
     currline = 11
     goto(currline,2)
     for i in eachindex(guesses)
@@ -553,6 +560,15 @@ wrong(c) = backgr_gray * c * color_reset
 #####################################################################
 
 if isinteractive() & !isempty(ARGS)
-    wordlew()
+    usefile = false
+    if isfile(ARGS[1])
+        for ln in eachline(ARGS1[1])
+            if length(ln) == 5
+                wordlew(ARGS[1])
+            end
+        end
+    else
+        wordlew()
+    end
     exit()
 end

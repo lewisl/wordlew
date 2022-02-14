@@ -1,4 +1,4 @@
-
+using DelimitedFiles
 
 function createcluefile(wordbasefile, outfilename)
     rawwords = readlines(wordbasefile)
