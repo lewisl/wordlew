@@ -14,13 +14,25 @@ Base.@kwdef mutable struct Results
     cluenum::Int=0
 end
 
+Base.@kwdef struct Menudef
+    str::String
+    choices::Vector{Char}
+end
+
 #########################################################################
 # new game design
 #########################################################################
 
-menus = ["  [R]andom  [C]hoose  [H]ow?  [Q]uit",
-         "  [B]ack  [S]hare  [Q]uit"
-        ]
+menus = [
+    Menudef(str = "  [R]andom  [C]hoose  [H]ow?  [Q]uit",
+            choices = ['r', 'c', 'h', 'q', 'j']),
+    Menudef(str = "  [B]ack  [S]hare  [Q]uit",
+            choices = ['b', 's', 'q', 'j'])
+    ]
+
+# menus = ["  [R]andom  [C]hoose  [H]ow?  [Q]uit",
+#          "  [B]ack  [S]hare  [Q]uit"
+#         ]
 
 function gameboard(;test = false)
     # named strings
@@ -42,7 +54,7 @@ function gameboard(;test = false)
 
     showgamename(gamename);         line += 1
     print(menumsg);                 line += 1
-    # print(menus[1]);                line += 1
+    # print(menus[1]);                line += 1  # function gamemenu shows this
     println();                      line += 1
     println(menuprompt);            line += 1
     println('\n'^5);                line += 5
@@ -89,10 +101,10 @@ function wordlew(wordfile="cluewords.txt")
     game = Results() # struct to hold guesses and scores
     game.cluesource = splitext(basename(wordfile))[1]
 
-    menu = 1
+    nextmenu = 1
     while true
-        menu = gamemenu!(game, cluewords, menu)
-        if menu == false
+        nextmenu = gamemenu!(game, cluewords, nextmenu)
+        if nextmenu == 0
             break
         end
     end
@@ -103,37 +115,34 @@ end
 function gamemenu!(game, cluewords, menu=1)
     goto(3,1)
     clearline(:curs)
-    print(menus[menu])
+    print(menus[menu].str)
     goto_origin(4)
     still = true
     while still
         goto(4,4)
         clearline(:curs)
         # sleep(2)
-        menuchoice = lowercase.(prompt_reply(""))
-        if isempty(menuchoice)
-            menuchoice = 'r'
-        else
-            menuchoice = menuchoice[1]   # incase someone accidentally typed more than 1 character
-        end
+        menuchoice = lowercase.(prompt_reply("").string[1])
         goto_origin(5); # sleep(2)
-        if menuchoice == 'r'      # random
-            return(dorandom!(game, cluewords))
-        elseif menuchoice == 'c'   # choose
-            return(dochoose!(game, cluewords))
-        elseif menuchoice == 'h'  # how?
-            return(dohow())
-        elseif menuchoice == 'b'  # back
-            return(clearboard())
-        elseif menuchoice == 's'  # capture outcome to share
-            return(doshare(game))
-        elseif menuchoice == 'q'   # quit out of Julia back to shell
-            doquit()
-        elseif menuchoice == 'j'  # secret way to quit the game and stay in Julia
-            return(dostop())
+        if menuchoice in menus[menu].choices
+            if menuchoice == 'r'      # random
+                return(dorandom!(game, cluewords))
+            elseif menuchoice == 'c'   # choose
+                return(dochoose!(game, cluewords))
+            elseif menuchoice == 'h'  # how?
+                return(dohow())
+            elseif menuchoice == 'b'  # back
+                return(clearboard())
+            elseif menuchoice == 's'  # capture outcome to share
+                return(doshare(game))
+            elseif menuchoice == 'q'   # quit out of Julia back to shell
+                doquit()
+            elseif menuchoice == 'j'  # secret way to quit the game and stay in Julia
+                return(dostop())
+            end
         else
             # sleep(2)
-            domsg("Choose again!")
+            domsg("\nChoose again!")
             continue
         end
     end
@@ -147,6 +156,9 @@ function dorandom!(game, cluewords)
     cluenum = rand(1:length(cluewords))
     clue = simplecrypt(cluewords[cluenum], mappings, :dec)
     game.cluenum = cluenum
+    game.scores = [[:none for i in 1:5] for i in 1:6]
+    game.guesses = fill("", 6)
+
 
     play!(game, clue)
     menu=2
@@ -162,6 +174,8 @@ function dochoose!(game, cluewords)
     pick = parse(Int, prompt_reply("Pick a number between 1 and $n> ")); 
     clue = simplecrypt(cluewords[pick], mappings, :dec)
     game.cluenum = pick
+    game.scores = [[:none for i in 1:5] for i in 1:6]
+    game.guesses = fill("", 6)
 
     goto_origin(7)
 
@@ -207,7 +221,8 @@ end
 function dostop()
     domsg("\nBye, bye!")
     Base.run(`clear`)
-    false
+    menu = 0
+    return menu
 end
 
 function dohow()
@@ -261,13 +276,13 @@ function play!(game, trueword; n_guesses = 6)
     turn = 1
     share = Vector{String}()
 
-    # print(how_to_play())
     goto(11,5)
     currline = 11
     while notdone
         downlines(2)
         cursorto(5)
         currline += 2
+
         guess = ask_guess()
         score = score_guess(guess, trueword)
         renderscored = render_result(guess, score, :score)
@@ -289,6 +304,36 @@ function play!(game, trueword; n_guesses = 6)
 
 end
 
+
+function score_guess(gw, tw)
+    n = length(tw)
+    ret = fill(:wrong, n)  # zeros(UInt8, n)
+    twarr = collect(tw)
+
+    # find every guess letter in the :inword position
+    for i in eachindex(gw)  
+        if twarr[i] == gw[i]
+            ret[i] = :right
+            twarr[i] = ';' # rule it out
+        end
+    end
+
+    # find every guess letter in the word
+    for i in eachindex(gw)
+        match = findfirst(gw[i] .== twarr)
+        if !isnothing(match)
+            ret[i] = :inword
+            twarr[match] = ';'  # rule it out
+        end
+    end
+
+    return ret
+end
+
+
+#####################################################
+# more game visuals
+#####################################################
 function show_share(game::Results)
     guesses = game.guesses
     scores = game.scores
@@ -357,6 +402,11 @@ function ask_guess()
 end
 
 
+function notaword(guess, wordbase)
+    !in(guess, wordbase)
+end
+
+
 function render_result(guess, score, mode=:score)   # visual rendering for terminal output
     io = IOBuffer()
     if mode == :score
@@ -387,7 +437,7 @@ function render_result(guess, score, mode=:score)   # visual rendering for termi
     else
         throw(DomainError("mode must be :share or :score, got: $mode"))
     end
-    return String(take!(io))
+    return String(take!(io))  # iobuffer to vector to string
 end
 
 
@@ -395,40 +445,6 @@ function show_1_result(renderscored)
     uplines(1)
     cursorto(27)
     print(renderscored)
-    # for i in eachindex(renderscored)
-    #     print(renderscored[i], "  ")
-    # end
-end
-
-
-function score_guess(gw, tw)
-    n = length(tw)
-    ret = fill(:wrong, n)  # zeros(UInt8, n)
-    twarr = collect(tw)
-
-    # find every guess letter in the :inword position
-    for i in eachindex(gw)  
-        if twarr[i] == gw[i]
-            ret[i] = :right
-            twarr[i] = ';' # rule it out
-        end
-    end
-
-    # find every guess letter in the word
-    for i in eachindex(gw)
-        match = findfirst(gw[i] .== twarr)
-        if !isnothing(match)
-            ret[i] = :inword
-            twarr[match] = ';'  # rule it out
-        end
-    end
-
-    return ret
-end
-
-
-function notaword(guess, wordbase)
-    !in(guess, wordbase)
 end
 
 
@@ -517,11 +533,9 @@ end
 #####################################################################
 
 # foreground colors
-#ESC[38;5;⟨n⟩m
 foregr_white = "\e[38;5;15m"
 
 # background colors
-#ESC[48;5;(n)m
 backgr_gray = "\e[48;5;251m"
 backgr_bryellow = "\e[48;5;227m"
 backgr_brgreen = "\e[48;5;119m"
@@ -535,22 +549,12 @@ hollow_arrow = '\u25b7'  # ▷
 solid_arrow = '\u25b6'   # ▶
 
 #####################################################################
-# functional formatting
+# functional formatting for scoring letters
 #####################################################################
 
 right(c) = backgr_brgreen * c * color_reset
 inword(c) = backgr_bryellow * c * color_reset
 wrong(c) = backgr_gray * c * color_reset
-
-# c_score(c, scr_c) = if scr_c == :right
-#                         right(c)
-#                     elseif scr_c == :inword
-#                         inword(c)
-#                     elseif scr_c == :wrong
-#                         wrong(c)
-#                     else
-#                         c
-#                     end
 
 
 #####################################################################
