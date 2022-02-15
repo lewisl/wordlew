@@ -122,7 +122,8 @@ function gamemenu!(game, cluewords, menu=1)
         goto(4,4)
         clearline(:curs)
         # sleep(2)
-        menuchoice = lowercase.(prompt_reply("").string[1])
+        menuchoice = lowercase.(prompt_reply("").string)   # [1]
+        menuchoice = isempty(menuchoice) ? ' ' : menuchoice[1]
         goto_origin(5); # sleep(2)
         if menuchoice in menus[menu].choices
             if menuchoice == 'r'      # random
