@@ -23,16 +23,6 @@ end
 # new game design
 #########################################################################
 
-menus = [
-    Menudef(str = "  [R]andom  [C]hoose  [H]ow?  [Q]uit",
-            choices = ['r', 'c', 'h', 'q', 'j']),
-    Menudef(str = "  [B]ack  [S]hare  [Q]uit",
-            choices = ['b', 's', 'q', 'j'])
-    ]
-
-# menus = ["  [R]andom  [C]hoose  [H]ow?  [Q]uit",
-#          "  [B]ack  [S]hare  [Q]uit"
-#         ]
 
 function gameboard(;test = false)
     # named strings
@@ -54,7 +44,7 @@ function gameboard(;test = false)
 
     showgamename(gamename);         line += 1
     print(menumsg);                 line += 1
-    # print(menus[1]);                line += 1  # function gamemenu shows this
+    # print(menus[1]);                line += 1  # function gamemenu does this: NOT GLOBAL
     println();                      line += 1
     println(menuprompt);            line += 1
     println('\n'^5);                line += 5
@@ -94,16 +84,23 @@ end
 
 function wordlew(wordfile="cluewords.txt")
 
+    menus = [
+                Menudef(str = "  [R]andom  [C]hoose  [H]ow?  [Q]uit",
+                        choices = ['r', 'c', 'h', 'q', 'j']),
+                Menudef(str = "  [B]ack  [S]hare  [Q]uit",
+                        choices = ['b', 's', 'q', 'j'])
+                ]
+
     cluewords = loadclues(wordfile)
 
     gameboard()
 
     game = Results() # struct to hold guesses and scores
-    game.cluesource = splitext(basename(wordfile))[1]
+    game.cluesource = splitext(basename(wordfile))[1] # name without file extension
 
     nextmenu = 1
     while true
-        nextmenu = gamemenu!(game, cluewords, nextmenu)
+        nextmenu = gamemenu!(game, cluewords, menus, nextmenu)
         if nextmenu == 0
             break
         end
@@ -112,7 +109,7 @@ function wordlew(wordfile="cluewords.txt")
 end
 
 
-function gamemenu!(game, cluewords, menu=1)
+function gamemenu!(game, cluewords, menus, menu=1)
     goto(3,1)
     clearline(:curs)
     print(menus[menu].str)
@@ -121,10 +118,14 @@ function gamemenu!(game, cluewords, menu=1)
     while still
         goto(4,4)
         clearline(:curs)
-        # sleep(2)
-        menuchoice = lowercase.(prompt_reply("").string)   # [1]
+        
+        menuchoice = lowercase.(prompt_reply("").string)   
         menuchoice = isempty(menuchoice) ? ' ' : menuchoice[1]
-        goto_origin(5); # sleep(2)
+
+        goto_origin(5); 
+
+        # returning the call executes side effects of the function and returns its return value up 1 level
+            # to function wordlew (the caller of this function gamemenu!)
         if menuchoice in menus[menu].choices
             if menuchoice == 'r'      # random
                 return(dorandom!(game, cluewords))
@@ -157,9 +158,8 @@ function dorandom!(game, cluewords)
     cluenum = rand(1:length(cluewords))
     clue = simplecrypt(cluewords[cluenum], mappings, :dec)
     game.cluenum = cluenum
-    game.scores = [[:none for i in 1:5] for i in 1:6]
+    game.scores = [[:none for i in 1:5] for i in 1:6] # re-initialize for each new clue
     game.guesses = fill("", 6)
-
 
     play!(game, clue)
     menu=2
@@ -175,7 +175,7 @@ function dochoose!(game, cluewords)
     pick = parse(Int, prompt_reply("Pick a number between 1 and $n> ")); 
     clue = simplecrypt(cluewords[pick], mappings, :dec)
     game.cluenum = pick
-    game.scores = [[:none for i in 1:5] for i in 1:6]
+    game.scores = [[:none for i in 1:5] for i in 1:6]  # re-initialize for each new clue
     game.guesses = fill("", 6)
 
     goto_origin(7)
@@ -257,14 +257,13 @@ function clearboard(n_guesses = 6)
         cursorto(2)
         currline += 2
         clearline(:all)
-        layout = (" \u25b6" * (' '^20) * "| " )
+        layout = (" " * solid_arrow * (' '^20) * "| " )
         print(layout)
     end
     goto_origin(currline)
     menu = 1
     return menu
 end
-
 
 
 ######################################################################
@@ -287,6 +286,8 @@ function play!(game, trueword; n_guesses = 6)
         guess = ask_guess()
         score = score_guess(guess, trueword)
         renderscored = render_result(guess, score, :score)
+
+        # save result to current game
         game.guesses[turn] = guess
         game.scores[turn] .= score
 
@@ -302,7 +303,6 @@ function play!(game, trueword; n_guesses = 6)
             notdone = false
         end
     end
-
 end
 
 
@@ -310,18 +310,20 @@ function score_guess(gw, tw)
     n = length(tw)
     ret = fill(:wrong, n)  # zeros(UInt8, n)
     twarr = collect(tw)
+    gwarr = collect(gw)
 
-    # find every guess letter in the :inword position
-    for i in eachindex(gw)  
-        if twarr[i] == gw[i]
+    # find every guess letter in the correct position
+    for i in eachindex(gwarr)  
+        if twarr[i] == gwarr[i]
             ret[i] = :right
             twarr[i] = ';' # rule it out
+            gwarr[i] = '-' # rule it out with a different signal
         end
     end
 
     # find every guess letter in the word
-    for i in eachindex(gw)
-        match = findfirst(gw[i] .== twarr)
+    for i in eachindex(gwarr)
+        match = findfirst(gwarr[i] .== twarr)
         if !isnothing(match)
             ret[i] = :inword
             twarr[match] = ';'  # rule it out
@@ -366,33 +368,16 @@ end
 
 
 function ask_guess()
-    layout = ("  \u25b6" * (' '^20) * "| " * '\n' * (' '^23) * "|")
     not_ok = true
     while not_ok
         guess = chomp(readline())
         lg = length(guess)
 
-        if lg > 5
-            uplines(1)
-            cursorto(27)
-            print("Must be 5 letters")
-            sleep(2)
-            cursorto(1)
-            clearline(:all)
-            print(layout)
-            uplines(1)
-            cursorto(5)
+        if lg != 5
+            alertguess("Must be 5 letters")
             continue
         elseif notaword(guess, wordbase)
-            uplines(1)
-            cursorto(27)
-            print("Guess a real word.")
-            sleep(2)
-            cursorto(1)
-            clearline(:all)
-            print(layout)
-            uplines(1)
-            cursorto(5)
+            alertguess("Guess a real word")
             continue
         else
             not_ok = false
@@ -402,9 +387,21 @@ function ask_guess()
     return guess
 end
 
-
 function notaword(guess, wordbase)
     !in(guess, wordbase)
+end
+
+function alertguess(msg)
+    layout = ("  " * solid_arrow * (' '^20) * "| " * '\n' * (' '^23) * "|")
+    uplines(1)
+    cursorto(27)
+    print(msg)
+    sleep(2)
+    cursorto(1)
+    clearline(:all)
+    print(layout)
+    uplines(1)
+    cursorto(5)
 end
 
 

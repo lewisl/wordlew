@@ -16,6 +16,12 @@ casually hiding data for non-secure purposes!
 
 The first method accepts and returns a vector of chars.
 The second method accepts and returns a string.
+
+Create the mappings with prepsimplecrypt(key=Char[]). The key
+is a vector of 26 chars in some random order. It returns
+a named tuple with 4 mappings. Now you can see how 
+bad this is: it is a substitution cipher. What was good enough
+for Julias Caesar is not good enough for anyone else.
 """
 function simplecrypt(intxt::Vector{Char}, mappings, mode=:enc)
     
