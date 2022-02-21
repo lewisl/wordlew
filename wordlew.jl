@@ -371,9 +371,8 @@ function ask_guess()
     not_ok = true
     while not_ok
         guess = chomp(readline())
-        lg = length(guess)
 
-        if lg != 5
+        if length(guess) != 5
             alertguess("Must be 5 letters")
             continue
         elseif notaword(guess, wordbase)
@@ -455,9 +454,11 @@ function loadclues(cluefile)
 end
 
 # all valid 5 letter words that can be guessed
-function makewordbase(wordtxtfilename="words5base.txt")
-    wordbase = readdlm(wordtxtfilename, String)
-    sort!(wordbase, dims=1)
+# must be simplecrypted
+# must have been sorted in unencrypted order before being simplecrypted
+function makewordbase(wordtxtfilename="cluewords.txt")
+    wordbase = reshape(readdlm(wordtxtfilename, String), :)
+    wordbase = bulkcrypt(wordbase, mappings, :dec)
     return wordbase
 end
 

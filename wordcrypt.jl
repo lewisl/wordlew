@@ -1,8 +1,8 @@
 using DelimitedFiles
 
-function createcluefile(wordbasefile, outfilename)
+function createcluefile(wordbasefile, outfilename, mode=:enc)
     rawwords = readlines(wordbasefile)
-    cryptwords = bulkcrypt(rawwords,mappings,:enc)
+    cryptwords = bulkcrypt(rawwords,mappings,mode)
     writedlm(outfilename, cryptwords)
 end
 
